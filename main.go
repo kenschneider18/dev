@@ -131,7 +131,7 @@ func main() {
 }
 
 func help() {
-	log.Println("Lol git gud")
+	fmt.Println("get - clone git repository into organized devpath\ninstall - runs get then builds the project from makefile and installs that to $DEVPATH/bin")
 }
 
 func cleanUp(path string) {
