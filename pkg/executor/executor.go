@@ -27,6 +27,7 @@ const (
 	INITIALIZE
 )
 
+// Making a commit with codespaces
 var (
 	// ValidCommands maps a command line argument to a command
 	ValidCommands = map[string]Command{
