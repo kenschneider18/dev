@@ -66,7 +66,7 @@ func main() {
 		log.Fatalln("Unknown command")
 	}
 
-	executor := executor.New(devbinDir, binDir, prevDir, devPath, cmd)
+	executor := executor.New(devbinDir, binDir, sourceDir, prevDir, devPath, cmd)
 	err = executor.Execute(args[1:])
 	if err != nil {
 		log.Fatal(err)

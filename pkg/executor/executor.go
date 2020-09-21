@@ -47,6 +47,7 @@ type (
 	Executor struct {
 		devbinDir   string
 		binDir      string
+		srcDir      string
 		prevDir     string
 		devPath     string
 		command     Command
@@ -55,10 +56,11 @@ type (
 )
 
 // New returns a new executor to run a command with
-func New(devbinDir, binDir, prevDir, devPath string, command Command) *Executor {
+func New(devbinDir, binDir, srcDir, prevDir, devPath string, command Command) *Executor {
 	return &Executor{
 		devbinDir: devbinDir,
 		binDir:    binDir,
+		srcDir:    srcDir,
 		prevDir:   prevDir,
 		devPath:   devPath,
 		command:   command,
@@ -112,7 +114,7 @@ func (e *Executor) clone(args []string) error {
 
 	err := os.MkdirAll(path, 0777)
 	if err != nil {
-		cleanUp(path)
+		e.cleanUp(path)
 		return err
 	}
 
@@ -129,19 +131,19 @@ func (e *Executor) clone(args []string) error {
 	cmd := exec.Command(command, commandArgs...)
 	stdErrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		cleanUp(path)
+		e.cleanUp(path)
 		return errors.Wrap(err, "failed to read from git")
 	}
 
 	if err = cmd.Start(); err != nil {
-		cleanUp(path)
+		e.cleanUp(path)
 		return errors.Wrap(err, "failed to clone git repo")
 	}
 
 	stdErr, _ := ioutil.ReadAll(stdErrPipe)
 
 	if err = cmd.Wait(); err != nil {
-		cleanUp(path)
+		e.cleanUp(path)
 		return errors.Wrapf(err, "failed to clone repo: %s", string(stdErr))
 	}
 
@@ -234,8 +236,8 @@ func (e *Executor) init(args []string) error {
 	return nil
 }
 
-func cleanUp(path string) error {
-	err := os.RemoveAll(path)
+func (e *Executor) cleanUp(path string) error {
+	err := os.RemoveAll(fmt.Sprintf("%s/%s/%s", e.devPath, e.srcDir, path))
 	if err != nil {
 		return errors.Wrap(err, "failed to clean up created directory structure")
 	}
