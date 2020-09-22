@@ -33,7 +33,7 @@ var (
 	ValidCommands = map[string]Command{
 		"get":     GET,
 		"install": INSTALL,
-		"init":    INITIALIZE,
+		//"init":    INITIALIZE,
 	}
 )
 
