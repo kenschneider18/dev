@@ -42,13 +42,13 @@ func main() {
 	// TODO: figure out if these permissions settings make sense
 	// or if they should be changed
 	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-		if err = os.Mkdir(sourceDir, 0777); err != nil {
+		if err = os.Mkdir(sourceDir, 0755); err != nil {
 			log.Fatalf("Failed to create %q directory: %s", sourceDir, err.Error())
 		}
 	}
 
 	if _, err := os.Stat(binDir); os.IsNotExist(err) {
-		if err = os.Mkdir(binDir, 0777); err != nil {
+		if err = os.Mkdir(binDir, 0755); err != nil {
 			log.Fatalf("Failed to create %q directory: %s", binDir, err.Error())
 		}
 	}

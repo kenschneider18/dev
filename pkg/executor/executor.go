@@ -112,7 +112,7 @@ func (e *Executor) clone(args []string) error {
 		return errors.New("invalid git repo prefix: do not include protocol prefixes such as https:// or git@")
 	}
 
-	err := os.MkdirAll(path, 0777)
+	err := os.MkdirAll(path, 0755)
 	if err != nil {
 		e.cleanUp(path)
 		return err
