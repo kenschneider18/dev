@@ -1,5 +1,5 @@
 // Package main is the main package for dev
-/* Copyright 2020 Kenneth Schneider
+/* Copyright 2021 Kenneth Schneider
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
