@@ -33,7 +33,7 @@ var (
 	ValidCommands = map[string]Command{
 		"get":     GET,
 		"install": INSTALL,
-		//"init":    INITIALIZE,
+		"init":    INITIALIZE,
 	}
 )
 
@@ -74,55 +74,49 @@ func (e *Executor) Execute(args []string) error {
 		if len(args) != 1 {
 			return errors.Errorf("get expects 1 argument, found %d", len(args))
 		}
-		return e.clone(args)
+		return e.clone(args[0])
 	case INSTALL:
 		if len(args) != 1 {
 			return errors.Errorf("install expects 1 argument, found %d", len(args))
 		}
-		err := e.clone(args)
+		err := e.clone(args[0])
 		if err != nil {
 			return err
 		}
 		return e.install()
 	case INITIALIZE:
-		return e.init(args)
+		var path string
+		var language string
+		if len(args) < 1 || len(args) > 2 {
+			return errors.Errorf("init expects at most 2 arguments, found %d", len(args))
+		} else if len(args) == 1 {
+			path = args[0]
+		} else {
+			path = args[0]
+			language = args[1]
+		}
+
+		return e.init(path, language)
 	default:
 		return errors.Errorf("command not found")
 	}
 }
 
-func (e *Executor) clone(args []string) error {
-	if len(args) != 1 {
-		return errors.Errorf("expects 1 argument, found %d", len(args))
-	}
-
+func (e *Executor) clone(path string) error {
 	// TODO: allow this to be done with or without a prefix
 	// default clones via HTTPS but supports either protocol
-	path := args[0]
-
-	// TODO: add -u flag to prevent this dialogue and update the existing
-	// clone ALSO allow passthrough so if someone has run get and then
-	// runs install later it will still do the install portion of the code but
-	// won't re-clone unless -u is passed
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		return errors.New("Repo already exists in DEVPATH... Stopping.")
-	}
 
 	if strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "git@") {
 		return errors.New("invalid git repo prefix: do not include protocol prefixes such as https:// or git@")
 	}
 
-	err := os.MkdirAll(path, 0755)
+	// TODO: add -u flag to prevent this dialogue and update the existing
+	// clone ALSO allow passthrough so if someone has run get and then
+	// runs install later it will still do the install portion of the code but
+	// won't re-clone unless -u is passed
+	err := e.makeDir(path, false)
 	if err != nil {
-		e.cleanUp(path)
-		return err
-	}
 
-	err = os.Chdir(path)
-	if e, ok := err.(*os.PathError); ok && err != nil {
-		return errors.Wrapf(e.Unwrap(), "failed to open directory %q", path)
-	} else if err != nil {
-		return errors.Wrapf(err, "failed to open directory %q", path)
 	}
 
 	command := "git"
@@ -232,7 +226,88 @@ func (e *Executor) install() error {
 	return nil
 }
 
-func (e *Executor) init(args []string) error {
+func (e *Executor) init(path, language string) error {
+	err := e.makeDir(path, false)
+	if err != nil {
+		return err
+	}
+
+	output, err := runCommand("git", []string{"init"})
+	if err != nil {
+		return err
+	}
+
+	// TODO: only print output if
+	// -v flag passed
+	if len(output) > 0 {
+		log.Print(output)
+	}
+
+	splitPath := strings.Split(path, "/")
+	readme := []byte(fmt.Sprintf("# %s\n", splitPath[len(splitPath)-1]))
+	err = ioutil.WriteFile("README.md", readme, 0544)
+	if err != nil {
+		return err
+	}
+
+	if strings.EqualFold(language, "go") {
+		output, err := runCommand("go", []string{"mod", "init", path})
+		if err != nil {
+			return err
+		}
+
+		// TODO: only print output if
+		// -v flag passed
+		if len(output) > 0 {
+			log.Print(output)
+		}
+	}
+
+	output, err = runCommand("git", []string{"add", "."})
+	if err != nil {
+		return err
+	}
+
+	// TODO: only print output if
+	// -v flag passed
+	if len(output) > 0 {
+		log.Print(output)
+	}
+
+	output, err = runCommand("git", []string{"commit", "-m", `"Initialize repository"`})
+	if err != nil {
+		return err
+	}
+
+	// TODO: only print output if
+	// -v flag passed
+	if len(output) > 0 {
+		log.Print(output)
+	}
+
+	return nil
+}
+
+func (e *Executor) makeDir(path string, ignoreAlreadyExists bool) error {
+	if _, err := os.Stat(path); !os.IsNotExist(err) && !ignoreAlreadyExists {
+		return errors.New("repo already exists in DEVPATH")
+	}
+
+	err := os.MkdirAll(path, 0755)
+	if err != nil {
+		e.cleanUp(path)
+		return err
+	}
+
+	err = os.Chdir(path)
+	if pe, ok := err.(*os.PathError); ok && err != nil {
+		e.cleanUp(path)
+		return errors.Wrapf(pe.Unwrap(), "failed to open directory %q", path)
+	} else if err != nil {
+		e.cleanUp(path)
+		return errors.Wrapf(err, "failed to open directory %q", path)
+	}
+
 	return nil
 }
 
@@ -242,4 +317,24 @@ func (e *Executor) cleanUp(path string) error {
 		return errors.Wrap(err, "failed to clean up created directory structure")
 	}
 	return nil
+}
+
+func runCommand(command string, args []string) (string, error) {
+	cmd := exec.Command(command, args...)
+	stdErrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return "", errors.Wrap(err, "failed to start command")
+	}
+
+	if err = cmd.Start(); err != nil {
+		return "", errors.Wrap(err, "failed to run command")
+	}
+
+	stdErr, _ := ioutil.ReadAll(stdErrPipe)
+
+	if err = cmd.Wait(); err != nil {
+		return "", errors.Wrapf(err, "failed to run command with error: %s", string(stdErr))
+	}
+
+	return string(stdErr), nil
 }
