@@ -55,8 +55,6 @@ type (
 	// Command represents the action to be executed
 	Command int
 
-	fn func([]string) error
-
 	// Executor runs a command
 	Executor struct {
 		devbinDir   string
@@ -65,7 +63,6 @@ type (
 		prevDir     string
 		devPath     string
 		command     Command
-		functionMap map[Command]func([]string) error
 	}
 )
 
@@ -130,7 +127,7 @@ func (e *Executor) clone(path string) error {
 	// won't re-clone unless -u is passed
 	err := e.makeDir(path, false)
 	if err != nil {
-
+		return err
 	}
 
 	command := "git"
@@ -188,7 +185,7 @@ func (e *Executor) install() error {
 
 	// TODO: only print output of make
 	// -v flag passed
-	log.Printf(string(stdOut))
+	log.Print(string(stdOut))
 
 	// open devbin directory
 	err = os.Chdir(e.devbinDir)
