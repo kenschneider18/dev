@@ -74,13 +74,11 @@ func main() {
 		log.Fatalf("Failed to open %q: %s", sourceDir, err.Error())
 	}
 
-	// parse command
-	cmd, ok := executor.ValidCommands[args[0]]
-	if !ok {
-		log.Fatalln("Unknown command")
+	executor, err := executor.New(devbinDir, binDir, sourceDir, prevDir, devPath, args[0])
+	if err != nil {
+		log.Fatalln(err)
 	}
 
-	executor := executor.New(devbinDir, binDir, sourceDir, prevDir, devPath, cmd)
 	err = executor.Execute(args[1:])
 	if err != nil {
 		log.Fatal(err)
