@@ -59,14 +59,14 @@ type (
 		devbinDir string
 		binDir    string
 		srcDir    string
-		prevDir   string
 		devPath   string
+		workDir   string
 		command   Command
 	}
 )
 
 // New returns a new executor to run a command with
-func New(devbinDir, binDir, srcDir, prevDir, devPath, command string) (*Executor, error) {
+func New(devbinDir, binDir, srcDir, devPath, command string) (*Executor, error) {
 	cmd, ok := validCommands[command]
 	if !ok {
 		return nil, fmt.Errorf("invalid command %q", command)
@@ -76,8 +76,8 @@ func New(devbinDir, binDir, srcDir, prevDir, devPath, command string) (*Executor
 		devbinDir: devbinDir,
 		binDir:    binDir,
 		srcDir:    srcDir,
-		prevDir:   prevDir,
 		devPath:   devPath,
+		workDir:   filepath.Join(devPath, srcDir),
 		command:   cmd,
 	}, nil
 }
@@ -89,16 +89,17 @@ func (e *Executor) Execute(args []string) error {
 		if len(args) != 1 {
 			return fmt.Errorf("get expects 1 argument, found %d", len(args))
 		}
-		return e.clone(args[0])
+		_, err := e.clone(args[0])
+		return err
 	case INSTALL:
 		if len(args) != 1 {
 			return fmt.Errorf("install expects 1 argument, found %d", len(args))
 		}
-		err := e.clone(args[0])
+		repoDir, err := e.clone(args[0])
 		if err != nil {
 			return err
 		}
-		return e.install()
+		return e.install(repoDir)
 	case INITIALIZE:
 		var path string
 		var language string
@@ -117,32 +118,34 @@ func (e *Executor) Execute(args []string) error {
 	}
 }
 
-func (e *Executor) clone(path string) error {
+func (e *Executor) clone(path string) (string, error) {
 	repoPath, cloneURL, err := normalizeClonePath(path)
 	if err != nil {
-		return err
+		return "", err
 	}
+
+	absRepoPath := filepath.Join(e.workDir, repoPath)
 
 	// TODO: add -u flag to prevent this dialogue and update the existing
 	// clone ALSO allow passthrough so if someone has run get and then
 	// runs install later it will still do the install portion of the code but
 	// won't re-clone unless -u is passed
-	err = e.makeDir(repoPath, false)
+	err = e.makeDir(absRepoPath, false)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	output, err := runCommand("git", []string{"clone", cloneURL, "."})
+	output, err := runCommand(absRepoPath, "git", []string{"clone", cloneURL, "."})
 	if err != nil {
-		e.cleanUp(repoPath)
-		return fmt.Errorf("failed to clone repo: %w", err)
+		e.cleanUp(absRepoPath)
+		return "", fmt.Errorf("failed to clone repo: %w", err)
 	}
 
 	// TODO: only print output of git clone if
 	// -v flag passed
 	log.Print(output)
 
-	return nil
+	return absRepoPath, nil
 }
 
 func normalizeClonePath(raw string) (string, string, error) {
@@ -236,9 +239,10 @@ func normalizeRepoPath(path string) (string, error) {
 	return normalized, nil
 }
 
-func (e *Executor) install() error {
-	// Run make
+func (e *Executor) install(repoDir string) error {
+	// Run make devbin in the repo directory
 	cmd := exec.Command("make", "devbin")
+	cmd.Dir = repoDir
 	stdErrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to read output from make: %w", err)
@@ -263,21 +267,14 @@ func (e *Executor) install() error {
 	// -v flag passed
 	log.Printf(string(stdOut))
 
-	// open devbin directory
-	err = os.Chdir(e.devbinDir)
-	if pathErr, ok := err.(*os.PathError); ok && err != nil {
-		return fmt.Errorf("failed to open %s: %w", e.devbinDir, pathErr.Unwrap())
-	} else if err != nil {
-		return fmt.Errorf("failed to open %s: %w", e.devbinDir, err)
-	}
-
+	devbinDir := filepath.Join(repoDir, e.devbinDir)
 	filesToMove := make([]string, 0, 5)
-	err = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(devbinDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to ls devbin: %w", err)
 		}
 
-		if info.IsDir() || path == "." || path == ".." {
+		if info.IsDir() {
 			return nil
 		}
 
@@ -292,34 +289,27 @@ func (e *Executor) install() error {
 	log.Println("Installing binaries: ", filesToMove)
 
 	for _, file := range filesToMove {
-		err = os.Rename(file, fmt.Sprintf("%s/%s/%s", e.devPath, e.binDir, file))
+		err = os.Rename(file, filepath.Join(e.devPath, e.binDir, filepath.Base(file)))
 		if err != nil {
 			return fmt.Errorf("failed to move file %q", file)
 		}
 	}
 
-	// open parent directory
-	err = os.Chdir(e.prevDir)
-	if e, ok := err.(*os.PathError); ok && err != nil {
-		return fmt.Errorf("failed to open parent directory: %w", e.Unwrap())
-	} else if err != nil {
-		return fmt.Errorf("failed to open parent directory: %w", err)
-	}
-
-	err = os.RemoveAll(e.devbinDir)
+	err = os.RemoveAll(devbinDir)
 	if err != nil {
-		return fmt.Errorf("failed to remove directory %q: %w", e.devbinDir, err)
+		return fmt.Errorf("failed to remove directory %q: %w", devbinDir, err)
 	}
 	return nil
 }
 
 func (e *Executor) init(path, language string) error {
-	err := e.makeDir(path, false)
+	absPath := filepath.Join(e.workDir, path)
+	err := e.makeDir(absPath, false)
 	if err != nil {
 		return err
 	}
 
-	output, err := runCommand("git", []string{"init"})
+	output, err := runCommand(absPath, "git", []string{"init"})
 	if err != nil {
 		return err
 	}
@@ -332,13 +322,13 @@ func (e *Executor) init(path, language string) error {
 
 	splitPath := strings.Split(path, "/")
 	readme := []byte(fmt.Sprintf("# %s\n", splitPath[len(splitPath)-1]))
-	err = os.WriteFile("README.md", readme, 0544)
+	err = os.WriteFile(filepath.Join(absPath, "README.md"), readme, 0544)
 	if err != nil {
 		return err
 	}
 
 	if strings.EqualFold(language, "go") {
-		output, err := runCommand("go", []string{"mod", "init", path})
+		output, err := runCommand(absPath, "go", []string{"mod", "init", path})
 		if err != nil {
 			return err
 		}
@@ -350,7 +340,7 @@ func (e *Executor) init(path, language string) error {
 		}
 	}
 
-	output, err = runCommand("git", []string{"add", "."})
+	output, err = runCommand(absPath, "git", []string{"add", "."})
 	if err != nil {
 		return err
 	}
@@ -361,7 +351,7 @@ func (e *Executor) init(path, language string) error {
 		log.Print(output)
 	}
 
-	output, err = runCommand("git", []string{"commit", "-m", `"Initialize repository"`})
+	output, err = runCommand(absPath, "git", []string{"commit", "-m", `"Initialize repository"`})
 	if err != nil {
 		return err
 	}
@@ -386,28 +376,20 @@ func (e *Executor) makeDir(path string, ignoreAlreadyExists bool) error {
 		return err
 	}
 
-	err = os.Chdir(path)
-	if pe, ok := err.(*os.PathError); ok && err != nil {
-		e.cleanUp(path)
-		return fmt.Errorf("failed to open directory %q: %w", path, pe.Unwrap())
-	} else if err != nil {
-		e.cleanUp(path)
-		return fmt.Errorf("failed to open directory %q: %w", path, err)
-	}
-
 	return nil
 }
 
 func (e *Executor) cleanUp(path string) error {
-	err := os.RemoveAll(fmt.Sprintf("%s/%s/%s", e.devPath, e.srcDir, path))
+	err := os.RemoveAll(path)
 	if err != nil {
 		return fmt.Errorf("failed to clean up created directory structure: %w", err)
 	}
 	return nil
 }
 
-func runCommand(command string, args []string) (string, error) {
+func runCommand(dir, command string, args []string) (string, error) {
 	cmd := exec.Command(command, args...)
+	cmd.Dir = dir
 	stdErrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		return "", fmt.Errorf("failed to start command: %w", err)

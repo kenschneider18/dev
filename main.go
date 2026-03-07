@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/kenschneider18/dev/pkg/executor"
 )
@@ -26,7 +27,6 @@ const (
 	sourceDir = "src"
 	binDir    = "bin"
 	devbinDir = "devbin"
-	prevDir   = ".."
 )
 
 func main() {
@@ -44,37 +44,28 @@ func main() {
 		log.Fatal("Unset/Invalid DEVPATH environment variable")
 	}
 
-	// cd to $DEVPATH, crash if the directory doesn't exist
-	// they should make the DEVPATH themselves
-	err := os.Chdir(devPath)
-	if e, ok := err.(*os.PathError); ok && err != nil {
-		log.Fatalf("Invalid DEVPATH %q: %s", devPath, e.Unwrap().Error())
+	// verify $DEVPATH exists — users must create it themselves
+	if _, err := os.Stat(devPath); os.IsNotExist(err) {
+		log.Fatalf("Invalid DEVPATH %q: directory does not exist", devPath)
 	} else if err != nil {
 		log.Fatalf("Failed to open DEVPATH: %s", err.Error())
 	}
 
 	// TODO: figure out if these permissions settings make sense
 	// or if they should be changed
-	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-		if err = os.Mkdir(sourceDir, 0755); err != nil {
+	if _, err := os.Stat(filepath.Join(devPath, sourceDir)); os.IsNotExist(err) {
+		if err = os.Mkdir(filepath.Join(devPath, sourceDir), 0755); err != nil {
 			log.Fatalf("Failed to create %q directory: %s", sourceDir, err.Error())
 		}
 	}
 
-	if _, err := os.Stat(binDir); os.IsNotExist(err) {
-		if err = os.Mkdir(binDir, 0755); err != nil {
+	if _, err := os.Stat(filepath.Join(devPath, binDir)); os.IsNotExist(err) {
+		if err = os.Mkdir(filepath.Join(devPath, binDir), 0755); err != nil {
 			log.Fatalf("Failed to create %q directory: %s", binDir, err.Error())
 		}
 	}
 
-	err = os.Chdir(sourceDir)
-	if e, ok := err.(*os.PathError); ok && err != nil {
-		log.Fatalf("Failed to open %q: %s", sourceDir, e.Unwrap().Error())
-	} else if err != nil {
-		log.Fatalf("Failed to open %q: %s", sourceDir, err.Error())
-	}
-
-	executor, err := executor.New(devbinDir, binDir, sourceDir, prevDir, devPath, args[0])
+	executor, err := executor.New(devbinDir, binDir, sourceDir, devPath, args[0])
 	if err != nil {
 		log.Fatalln(err)
 	}
