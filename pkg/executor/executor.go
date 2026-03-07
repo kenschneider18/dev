@@ -17,8 +17,9 @@ package executor
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,28 +118,23 @@ func (e *Executor) Execute(args []string) error {
 }
 
 func (e *Executor) clone(path string) error {
-	// TODO: allow this to be done with or without a prefix
-	// default clones via HTTPS but supports either protocol
-
-	if strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "git@") {
-		return errors.New("invalid git repo prefix: do not include protocol prefixes such as https:// or git@")
+	repoPath, cloneURL, err := normalizeClonePath(path)
+	if err != nil {
+		return err
 	}
 
 	// TODO: add -u flag to prevent this dialogue and update the existing
 	// clone ALSO allow passthrough so if someone has run get and then
 	// runs install later it will still do the install portion of the code but
 	// won't re-clone unless -u is passed
-	err := e.makeDir(path, false)
+	err = e.makeDir(repoPath, false)
 	if err != nil {
 		return err
 	}
 
-	// TODO: determine if using HTTPS is the right path forward. One can configure
-	// git to automatically default to cloning all the things with SSH but is that
-	// what I want to enforce here?
-	output, err := runCommand("git", []string{"clone", fmt.Sprintf("https://%s", path), "."})
+	output, err := runCommand("git", []string{"clone", cloneURL, "."})
 	if err != nil {
-		e.cleanUp(path)
+		e.cleanUp(repoPath)
 		return fmt.Errorf("failed to clone repo: %w", err)
 	}
 
@@ -147,6 +143,97 @@ func (e *Executor) clone(path string) error {
 	log.Print(output)
 
 	return nil
+}
+
+func normalizeClonePath(raw string) (string, string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", "", errors.New("repo path is required")
+	}
+
+	if strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "http://") {
+		repoPath, cloneURL, err := parseHTTPRepoURL(trimmed)
+		if err != nil {
+			return "", "", err
+		}
+		return repoPath, cloneURL, nil
+	}
+
+	if strings.HasPrefix(trimmed, "git@") {
+		repoPath, err := parseGitSSHPath(trimmed)
+		if err != nil {
+			return "", "", err
+		}
+		return repoPath, trimmed, nil
+	}
+
+	repoPath, err := normalizeRepoPath(trimmed)
+	if err != nil {
+		return "", "", err
+	}
+	return repoPath, fmt.Sprintf("https://%s", repoPath), nil
+}
+
+func parseHTTPRepoURL(raw string) (string, string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid http(s) repo URL: %w", err)
+	}
+
+	if (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+		return "", "", errors.New("invalid http(s) repo URL")
+	}
+
+	path := strings.TrimPrefix(parsed.Path, "/")
+	if path == "" {
+		return "", "", errors.New("invalid http(s) repo URL: missing repository path")
+	}
+
+	repoPath, err := normalizeRepoPath(fmt.Sprintf("%s/%s", parsed.Host, path))
+	if err != nil {
+		return "", "", err
+	}
+
+	// Warn if credentials are embedded in the URL — they will be visible in
+	// process listings while git clone is running.
+	if parsed.User != nil {
+		log.Println("warning: embedded credentials detected in repo URL; these will be visible in process listings")
+	}
+	return repoPath, raw, nil
+}
+
+func parseGitSSHPath(raw string) (string, error) {
+	withoutPrefix := strings.TrimPrefix(raw, "git@")
+	if withoutPrefix == "" {
+		return "", errors.New("invalid ssh repo URL")
+	}
+
+	// Standard SSH git URLs use colon as the separator between host and path
+	// (e.g. git@github.com:org/repo). Slash is accepted as a fallback for
+	// non-standard formats (e.g. git@github.com/org/repo).
+	separator := ":"
+	if !strings.Contains(withoutPrefix, separator) {
+		separator = "/"
+	}
+
+	parts := strings.SplitN(withoutPrefix, separator, 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", errors.New("invalid ssh repo URL")
+	}
+
+	return normalizeRepoPath(fmt.Sprintf("%s/%s", parts[0], parts[1]))
+}
+
+func normalizeRepoPath(path string) (string, error) {
+	normalized := strings.Trim(path, "/")
+	normalized = strings.TrimSuffix(normalized, ".git")
+	normalized = strings.TrimSuffix(normalized, "/")
+	// Require at least host/org/repo (2 slashes minimum); deeper paths like
+	// gitlab.com/group/subgroup/project are also valid.
+	if normalized == "" || strings.Count(normalized, "/") < 2 {
+		return "", errors.New("invalid repo path: requires at least host/org/repo")
+	}
+	return normalized, nil
 }
 
 func (e *Executor) install() error {
@@ -166,8 +253,8 @@ func (e *Executor) install() error {
 		return fmt.Errorf("failed running make devbin: %w", err)
 	}
 
-	stdErr, _ := ioutil.ReadAll(stdErrPipe)
-	stdOut, _ := ioutil.ReadAll(stdOutPipe)
+	stdErr, _ := io.ReadAll(stdErrPipe)
+	stdOut, _ := io.ReadAll(stdOutPipe)
 	if err = cmd.Wait(); err != nil {
 		return fmt.Errorf("failed to run make devbin %s: %w", string(stdErr), err)
 	}
@@ -245,7 +332,7 @@ func (e *Executor) init(path, language string) error {
 
 	splitPath := strings.Split(path, "/")
 	readme := []byte(fmt.Sprintf("# %s\n", splitPath[len(splitPath)-1]))
-	err = ioutil.WriteFile("README.md", readme, 0544)
+	err = os.WriteFile("README.md", readme, 0544)
 	if err != nil {
 		return err
 	}
@@ -330,7 +417,7 @@ func runCommand(command string, args []string) (string, error) {
 		return "", fmt.Errorf("failed to run command: %w", err)
 	}
 
-	stdErr, _ := ioutil.ReadAll(stdErrPipe)
+	stdErr, _ := io.ReadAll(stdErrPipe)
 
 	if err = cmd.Wait(); err != nil {
 		return "", fmt.Errorf("failed to run command with error: %s: %w", string(stdErr), err)
