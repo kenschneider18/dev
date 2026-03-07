@@ -129,3 +129,55 @@ func TestNormalizeClonePath(t *testing.T) {
 		})
 	}
 }
+
+func TestNew(t *testing.T) {
+	tests := []struct {
+		name        string
+		devPath     string
+		srcDir      string
+		wantWorkDir string
+		command     string
+		wantErr     bool
+	}{
+		{
+			name:        "valid command sets workDir",
+			devPath:     "/home/user/dev",
+			srcDir:      "src",
+			wantWorkDir: "/home/user/dev/src",
+			command:     "get",
+		},
+		{
+			name:        "workDir cleans trailing slash on devPath",
+			devPath:     "/opt/devpath/",
+			srcDir:      "src",
+			wantWorkDir: "/opt/devpath/src",
+			command:     "install",
+		},
+		{
+			name:    "invalid command returns error",
+			devPath: "/home/user/dev",
+			srcDir:  "src",
+			command: "invalid",
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			e, err := New("devbin", "bin", test.srcDir, test.devPath, test.command)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("New() error = %v, wantErr %v", err, test.wantErr)
+			}
+			if test.wantErr {
+				return
+			}
+			if e.workDir != test.wantWorkDir {
+				t.Fatalf("New() workDir = %q, want %q", e.workDir, test.wantWorkDir)
+			}
+			if e.devPath != test.devPath {
+				t.Fatalf("New() devPath = %q, want %q", e.devPath, test.devPath)
+			}
+		})
+	}
+}

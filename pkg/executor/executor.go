@@ -265,7 +265,7 @@ func (e *Executor) install(repoDir string) error {
 
 	// TODO: only print output of make
 	// -v flag passed
-	log.Printf(string(stdOut))
+	log.Printf("%s", stdOut)
 
 	devbinDir := filepath.Join(repoDir, e.devbinDir)
 	filesToMove := make([]string, 0, 5)
@@ -289,9 +289,10 @@ func (e *Executor) install(repoDir string) error {
 	log.Println("Installing binaries: ", filesToMove)
 
 	for _, file := range filesToMove {
-		err = os.Rename(file, filepath.Join(e.devPath, e.binDir, filepath.Base(file)))
+		dst := filepath.Join(e.devPath, e.binDir, filepath.Base(file))
+		err = os.Rename(file, dst)
 		if err != nil {
-			return fmt.Errorf("failed to move file %q", file)
+			return fmt.Errorf("failed to move file %q to %q: %w", file, dst, err)
 		}
 	}
 
@@ -322,7 +323,7 @@ func (e *Executor) init(path, language string) error {
 
 	splitPath := strings.Split(path, "/")
 	readme := []byte(fmt.Sprintf("# %s\n", splitPath[len(splitPath)-1]))
-	err = os.WriteFile(filepath.Join(absPath, "README.md"), readme, 0544)
+	err = os.WriteFile(filepath.Join(absPath, "README.md"), readme, 0644)
 	if err != nil {
 		return err
 	}
@@ -351,7 +352,7 @@ func (e *Executor) init(path, language string) error {
 		log.Print(output)
 	}
 
-	output, err = runCommand(absPath, "git", []string{"commit", "-m", `"Initialize repository"`})
+	output, err = runCommand(absPath, "git", []string{"commit", "-m", "Initialize repository"})
 	if err != nil {
 		return err
 	}
