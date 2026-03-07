@@ -44,11 +44,14 @@ func main() {
 		log.Fatal("Unset/Invalid DEVPATH environment variable")
 	}
 
-	// verify $DEVPATH exists — users must create it themselves
-	if _, err := os.Stat(devPath); os.IsNotExist(err) {
+	// verify $DEVPATH exists and is a directory — users must create it themselves
+	info, err := os.Stat(devPath)
+	if os.IsNotExist(err) {
 		log.Fatalf("Invalid DEVPATH %q: directory does not exist", devPath)
 	} else if err != nil {
 		log.Fatalf("Failed to open DEVPATH: %s", err.Error())
+	} else if !info.IsDir() {
+		log.Fatalf("Invalid DEVPATH %q: not a directory", devPath)
 	}
 
 	// TODO: figure out if these permissions settings make sense
