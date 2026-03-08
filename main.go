@@ -29,12 +29,19 @@ const (
 	devbinDir = "devbin"
 )
 
+var version = "dev"
+
 func main() {
 	// command line args minus program name
 	args := os.Args[1:]
 
-	if len(args) <= 0 || args[0] == "help" {
+	if len(args) == 0 || args[0] == "help" {
 		help()
+		return
+	}
+
+	if args[0] == "version" || args[0] == "--version" {
+		fmt.Printf("dev %s\n", version)
 		return
 	}
 
@@ -79,7 +86,22 @@ func main() {
 	}
 }
 
-// TODO: make this a more expansive help section
 func help() {
-	fmt.Println("get - clone git repository into organized devpath\ninstall - runs get then builds the project from makefile and installs that to $DEVPATH/bin")
+	fmt.Printf(`dev - manage your development environment
+
+Usage:
+  dev <command> [arguments]
+
+Commands:
+  get <repo>            Clone a repository to $DEVPATH/src/<host>/<org>/<repo>
+  init <repo> [lang]    Create a new repository in $DEVPATH/src
+  install <repo>        Clone a repository and install its binary to $DEVPATH/bin
+  version               Show version information
+  help                  Show this help message
+
+Environment:
+  DEVPATH               Base directory for all repositories and binaries
+
+Version: %s
+`, version)
 }
