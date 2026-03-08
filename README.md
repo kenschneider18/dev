@@ -19,7 +19,7 @@ Dev is a tool for managing your development environment inspired by the Golang t
 
 At the moment the only way to install and run this is with the Go toolchain. Assuming you have Go installed on your computer and have added your `$GOPATH` added to your `$PATH`:
 
-`go get github.com/kenschneider18/dev`
+`go install github.com/kenschneider18/dev@latest`
 
 #### Configure `$DEVPATH`
 
