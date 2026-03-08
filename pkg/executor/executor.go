@@ -391,6 +391,12 @@ func (e *Executor) cleanUp(path string) error {
 func runCommand(dir, command string, args []string) (string, error) {
 	cmd := exec.Command(command, args...)
 	cmd.Dir = dir
+
+	stdOutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("failed to start command: %w", err)
+	}
+
 	stdErrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		return "", fmt.Errorf("failed to start command: %w", err)
@@ -400,11 +406,12 @@ func runCommand(dir, command string, args []string) (string, error) {
 		return "", fmt.Errorf("failed to run command: %w", err)
 	}
 
+	stdOut, _ := io.ReadAll(stdOutPipe)
 	stdErr, _ := io.ReadAll(stdErrPipe)
 
 	if err = cmd.Wait(); err != nil {
 		return "", fmt.Errorf("failed to run command with error: %s: %w", string(stdErr), err)
 	}
 
-	return string(stdErr), nil
+	return string(stdOut) + string(stdErr), nil
 }
