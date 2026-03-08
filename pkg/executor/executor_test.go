@@ -165,7 +165,7 @@ func TestNew(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			e, err := New("devbin", "bin", test.srcDir, test.devPath, test.command)
+			e, err := New("devbin", "bin", test.srcDir, test.devPath, test.command, false)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("New() error = %v, wantErr %v", err, test.wantErr)
 			}

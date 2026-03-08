@@ -62,11 +62,12 @@ type (
 		devPath   string
 		workDir   string
 		command   Command
+		verbose   bool
 	}
 )
 
 // New returns a new executor to run a command with
-func New(devbinDir, binDir, srcDir, devPath, command string) (*Executor, error) {
+func New(devbinDir, binDir, srcDir, devPath, command string, verbose bool) (*Executor, error) {
 	cmd, ok := validCommands[command]
 	if !ok {
 		return nil, fmt.Errorf("invalid command %q", command)
@@ -79,6 +80,7 @@ func New(devbinDir, binDir, srcDir, devPath, command string) (*Executor, error) 
 		devPath:   devPath,
 		workDir:   filepath.Join(devPath, srcDir),
 		command:   cmd,
+		verbose:   verbose,
 	}, nil
 }
 
@@ -141,9 +143,9 @@ func (e *Executor) clone(path string) (string, error) {
 		return "", fmt.Errorf("failed to clone repo: %w", err)
 	}
 
-	// TODO: only print output of git clone if
-	// -v flag passed
-	log.Print(output)
+	if e.verbose {
+		log.Print(output)
+	}
 
 	return absRepoPath, nil
 }
@@ -240,32 +242,14 @@ func normalizeRepoPath(path string) (string, error) {
 }
 
 func (e *Executor) install(repoDir string) error {
-	// Run make devbin in the repo directory
-	cmd := exec.Command("make", "devbin")
-	cmd.Dir = repoDir
-	stdErrPipe, err := cmd.StderrPipe()
+	output, err := runCommand(repoDir, "make", []string{"devbin"})
 	if err != nil {
-		return fmt.Errorf("failed to read output from make: %w", err)
-	}
-
-	stdOutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to read output from make: %w", err)
-	}
-
-	if err = cmd.Start(); err != nil {
 		return fmt.Errorf("failed running make devbin: %w", err)
 	}
 
-	stdErr, _ := io.ReadAll(stdErrPipe)
-	stdOut, _ := io.ReadAll(stdOutPipe)
-	if err = cmd.Wait(); err != nil {
-		return fmt.Errorf("failed to run make devbin %s: %w", string(stdErr), err)
+	if e.verbose {
+		log.Print(output)
 	}
-
-	// TODO: only print output of make
-	// -v flag passed
-	log.Printf("%s", stdOut)
 
 	devbinDir := filepath.Join(repoDir, e.devbinDir)
 	filesToMove := make([]string, 0, 5)
@@ -286,7 +270,9 @@ func (e *Executor) install(repoDir string) error {
 		return fmt.Errorf("failed to walk directory: %w", err)
 	}
 
-	log.Println("Installing binaries: ", filesToMove)
+	if e.verbose {
+		log.Println("Installing binaries: ", filesToMove)
+	}
 
 	for _, file := range filesToMove {
 		dst := filepath.Join(e.devPath, e.binDir, filepath.Base(file))
@@ -315,9 +301,7 @@ func (e *Executor) init(path, language string) error {
 		return err
 	}
 
-	// TODO: only print output if
-	// -v flag passed
-	if len(output) > 0 {
+	if e.verbose && len(output) > 0 {
 		log.Print(output)
 	}
 
@@ -334,9 +318,7 @@ func (e *Executor) init(path, language string) error {
 			return err
 		}
 
-		// TODO: only print output if
-		// -v flag passed
-		if len(output) > 0 {
+		if e.verbose && len(output) > 0 {
 			log.Print(output)
 		}
 	}
@@ -346,9 +328,7 @@ func (e *Executor) init(path, language string) error {
 		return err
 	}
 
-	// TODO: only print output if
-	// -v flag passed
-	if len(output) > 0 {
+	if e.verbose && len(output) > 0 {
 		log.Print(output)
 	}
 
@@ -357,9 +337,7 @@ func (e *Executor) init(path, language string) error {
 		return err
 	}
 
-	// TODO: only print output if
-	// -v flag passed
-	if len(output) > 0 {
+	if e.verbose && len(output) > 0 {
 		log.Print(output)
 	}
 

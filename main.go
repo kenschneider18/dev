@@ -35,6 +35,18 @@ func main() {
 	// command line args minus program name
 	args := os.Args[1:]
 
+	// strip -v / --verbose before looking at the command
+	verbose := false
+	filtered := args[:0]
+	for _, a := range args {
+		if a == "-v" || a == "--verbose" {
+			verbose = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+	args = filtered
+
 	if len(args) == 0 || args[0] == "help" {
 		help()
 		return
@@ -75,7 +87,7 @@ func main() {
 		}
 	}
 
-	executor, err := executor.New(devbinDir, binDir, sourceDir, devPath, args[0])
+	executor, err := executor.New(devbinDir, binDir, sourceDir, devPath, args[0], verbose)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -90,7 +102,7 @@ func help() {
 	fmt.Printf(`dev - manage your development environment
 
 Usage:
-  dev <command> [arguments]
+  dev [-v] <command> [arguments]
 
 Commands:
   get <repo>            Clone a repository to $DEVPATH/src/<host>/<org>/<repo>
@@ -98,6 +110,9 @@ Commands:
   install <repo>        Clone a repository and install its binary to $DEVPATH/bin
   version               Show version information
   help                  Show this help message
+
+Flags:
+  -v, --verbose         Print output from git and make subcommands
 
 Environment:
   DEVPATH               Base directory for all repositories and binaries
