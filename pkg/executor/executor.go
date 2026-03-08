@@ -63,11 +63,12 @@ type (
 		workDir   string
 		command   Command
 		verbose   bool
+		update    bool
 	}
 )
 
 // New returns a new executor to run a command with
-func New(devbinDir, binDir, srcDir, devPath, command string, verbose bool) (*Executor, error) {
+func New(devbinDir, binDir, srcDir, devPath, command string, verbose, update bool) (*Executor, error) {
 	cmd, ok := validCommands[command]
 	if !ok {
 		return nil, fmt.Errorf("invalid command %q", command)
@@ -81,6 +82,7 @@ func New(devbinDir, binDir, srcDir, devPath, command string, verbose bool) (*Exe
 		workDir:   filepath.Join(devPath, srcDir),
 		command:   cmd,
 		verbose:   verbose,
+		update:    update,
 	}, nil
 }
 
@@ -128,10 +130,20 @@ func (e *Executor) clone(path string) (string, error) {
 
 	absRepoPath := filepath.Join(e.workDir, repoPath)
 
-	// TODO: add -u flag to prevent this dialogue and update the existing
-	// clone ALSO allow passthrough so if someone has run get and then
-	// runs install later it will still do the install portion of the code but
-	// won't re-clone unless -u is passed
+	if _, err := os.Stat(absRepoPath); !os.IsNotExist(err) {
+		if !e.update {
+			return "", errors.New("repo already exists in DEVPATH")
+		}
+		output, err := runCommand(absRepoPath, "git", []string{"pull"})
+		if err != nil {
+			return "", fmt.Errorf("failed to update repo: %w", err)
+		}
+		if e.verbose {
+			log.Print(output)
+		}
+		return absRepoPath, nil
+	}
+
 	err = e.makeDir(absRepoPath, false)
 	if err != nil {
 		return "", err

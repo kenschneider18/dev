@@ -35,13 +35,17 @@ func main() {
 	// command line args minus program name
 	args := os.Args[1:]
 
-	// strip -v / --verbose before looking at the command
+	// strip flags before looking at the command
 	verbose := false
+	update := false
 	filtered := args[:0]
 	for _, a := range args {
-		if a == "-v" || a == "--verbose" {
+		switch a {
+		case "-v", "--verbose":
 			verbose = true
-		} else {
+		case "-u", "--update":
+			update = true
+		default:
 			filtered = append(filtered, a)
 		}
 	}
@@ -87,7 +91,7 @@ func main() {
 		}
 	}
 
-	executor, err := executor.New(devbinDir, binDir, sourceDir, devPath, args[0], verbose)
+	executor, err := executor.New(devbinDir, binDir, sourceDir, devPath, args[0], verbose, update)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -113,6 +117,7 @@ Commands:
 
 Flags:
   -v, --verbose         Print output from git and make subcommands
+  -u, --update          Pull latest changes if repo already exists (get/install)
 
 Environment:
   DEVPATH               Base directory for all repositories and binaries
